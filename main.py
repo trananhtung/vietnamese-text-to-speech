@@ -62,6 +62,12 @@ def normalize_text_preserve_newlines(text: str) -> str:
 
 
 def split_sentences(text: str) -> List[str]:
+    # Newlines được coi như dấu chấm để TTS ngắt nhịp tự nhiên
+    # - Nếu trước newline KHÔNG phải là dấu câu, chèn ". "
+    # - Nếu trước newline đã là dấu câu, chỉ thay bằng khoảng trắng để tránh ".."
+    text = text.replace("\r\n", "\n").replace("\r", "\n")
+    text = re.sub(r"(?<![.!?。！？…])\n+", ". ", text)
+    text = re.sub(r"\n+", " ", text)
     text = normalize_space(text)
     parts: List[str] = []
     start = 0
@@ -111,7 +117,7 @@ class TTSConfig:
     pitch: str = "-20Hz"
     max_retries: int = 3           # số lần thử lại khi lỗi mạng/no audio
     retry_delay: float = 1.5       # giây, delay ban đầu cho backoff
-    throttle: float = 1          # giãn cách giữa các mảnh
+    throttle: float = 3          # giãn cách giữa các mảnh
     allow_fallback: bool = True    # fallback sang gTTS nếu edge-tts lỗi nhiều lần
 
 
@@ -376,7 +382,7 @@ def main():
                                  help="Số lần thử lại khi gặp lỗi mạng hoặc không nhận được audio")
         retry_delay = st.number_input("Khoảng chờ giữa các lần thử (giây):", min_value=0.0, value=1.5, step=0.1, key="tts_retry_delay",
                                      help="Thời gian chờ trước khi thử lại (tự động tăng dần theo số lần thử)")
-        throttle = st.number_input("Khoảng cách giữa các đoạn (giây):", min_value=0.0, value=1.0, step=0.1, key="tts_throttle",
+        throttle = st.number_input("Khoảng cách giữa các đoạn (giây):", min_value=0.0, value=3.0, step=0.1, key="tts_throttle",
                                    help="Thời gian chờ giữa các đoạn text để tránh bị giới hạn tốc độ từ dịch vụ TTS")
         max_workers = st.number_input(
             "Số luồng xử lý tối đa:",
@@ -770,6 +776,14 @@ def process_audio(ids: List[int], skip_existing: bool, backend: str, voice: str,
             tmp_mp3 = target_path.with_suffix(".mp3").with_name(target_path.stem + "__tmp_merge.mp3")
             backend_inst.synth_chunks_to_file(chunks, tmp_mp3)
             audio = AudioSegment.from_file(tmp_mp3, format="mp3")
+            # Thêm 5 giây im lặng ở đầu trước khi xuất
+            try:
+                pre_silence = AudioSegment.silent(duration=3000, frame_rate=audio.frame_rate)
+                pre_silence = pre_silence.set_channels(audio.channels).set_sample_width(audio.sample_width)
+                audio = pre_silence + audio
+            except Exception:
+                # Nếu tạo silence gặp lỗi vì khác tham số, fallback dùng mặc định
+                audio = AudioSegment.silent(duration=3000) + audio
             final_path = export_merge(target_path.with_suffix(""), audio)
             try:
                 tmp_mp3.unlink(missing_ok=True)
