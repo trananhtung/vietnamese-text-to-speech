@@ -1,0 +1,23 @@
+version: '3.8'
+
+services:
+  tao-audio-viet:
+    build: .
+    container_name: tao-audio-viet
+    ports:
+      - "8501:8501"
+    volumes:
+      # Mount thư mục output để lưu file audio ra ngoài container
+      - ./output_audio:/app/output_audio
+      # Mount thư mục temp để lưu file upload tạm thời
+      - ./temp_uploads:/app/temp_uploads
+    restart: unless-stopped
+    environment:
+      - TZ=Asia/Ho_Chi_Minh
+    healthcheck:
+      test: ["CMD", "python", "-c", "import requests; requests.get('http://localhost:8501/_stcore/health')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 5s
+
