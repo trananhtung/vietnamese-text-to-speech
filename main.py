@@ -117,7 +117,7 @@ class TTSConfig:
     pitch: str = "-20Hz"
     max_retries: int = 3           # số lần thử lại khi lỗi mạng/no audio
     retry_delay: float = 1.5       # giây, delay ban đầu cho backoff
-    throttle: float = 3          # giãn cách giữa các mảnh
+    throttle: float = 2          # giãn cách giữa các mảnh
     allow_fallback: bool = True    # fallback sang gTTS nếu edge-tts lỗi nhiều lần
 
 
@@ -382,7 +382,7 @@ def main():
                                  help="Số lần thử lại khi gặp lỗi mạng hoặc không nhận được audio")
         retry_delay = st.number_input("Khoảng chờ giữa các lần thử (giây):", min_value=0.0, value=1.5, step=0.1, key="tts_retry_delay",
                                      help="Thời gian chờ trước khi thử lại (tự động tăng dần theo số lần thử)")
-        throttle = st.number_input("Khoảng cách giữa các đoạn (giây):", min_value=0.0, value=3.0, step=0.1, key="tts_throttle",
+        throttle = st.number_input("Khoảng cách giữa các đoạn (giây):", min_value=0.0, value=2.0, step=0.1, key="tts_throttle",
                                    help="Thời gian chờ giữa các đoạn text để tránh bị giới hạn tốc độ từ dịch vụ TTS")
         max_workers = st.number_input(
             "Số luồng xử lý tối đa:",
@@ -778,12 +778,12 @@ def process_audio(ids: List[int], skip_existing: bool, backend: str, voice: str,
             audio = AudioSegment.from_file(tmp_mp3, format="mp3")
             # Thêm 5 giây im lặng ở đầu trước khi xuất
             try:
-                pre_silence = AudioSegment.silent(duration=3000, frame_rate=audio.frame_rate)
+                pre_silence = AudioSegment.silent(duration=2000, frame_rate=audio.frame_rate)
                 pre_silence = pre_silence.set_channels(audio.channels).set_sample_width(audio.sample_width)
                 audio = pre_silence + audio
             except Exception:
                 # Nếu tạo silence gặp lỗi vì khác tham số, fallback dùng mặc định
-                audio = AudioSegment.silent(duration=3000) + audio
+                audio = AudioSegment.silent(duration=2000) + audio
             final_path = export_merge(target_path.with_suffix(""), audio)
             try:
                 tmp_mp3.unlink(missing_ok=True)
