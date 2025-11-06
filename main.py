@@ -338,15 +338,7 @@ def main():
         st.info("💡 Nhập nội dung text trực tiếp vào trình soạn thảo bên dưới")
         st.session_state.input_path = "direct_text_input"
         
-        # Input tên cho text/audio
-        is_processing = st.session_state.get("processing", False)
-        text_title = st.text_input(
-            "Tên file/nội dung:",
-            value=st.session_state.get("text_title", "Text đã nhập"),
-            help="Nhập tên để hiển thị và đặt tên cho file audio. Ví dụ: 'Chương 1', 'Bài học tiếng Anh', v.v.",
-            disabled=is_processing
-        )
-        st.session_state.text_title = text_title
+        # Input tên cho text/audio đã được loại bỏ. Ứng dụng sẽ dùng tên mặc định.
         
         # Thư mục xuất
         output_dir = st.text_input(
