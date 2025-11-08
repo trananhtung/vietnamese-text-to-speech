@@ -415,19 +415,6 @@ def main():
                 help=f"Tốc độ bit cho {audio_format.upper()}. Số càng cao = chất lượng càng tốt nhưng file càng lớn.\nVí dụ: 128k (chất lượng thấp), 192k (chất lượng tốt), 256k (chất lượng cao), 320k (chất lượng rất cao)"
             )
         
-        # Tùy chọn phát
-        st.subheader("▶️ Cài đặt phát âm thanh")
-        autoplay_next = st.checkbox(
-            "Tự động phát chương tiếp theo", 
-            value=False,
-            help="Khi bật, sau khi chương hiện tại phát xong sẽ tự động chuyển sang và phát chương kế tiếp"
-        )
-        resume_enabled = st.checkbox(
-            "Ghi nhớ vị trí đang nghe", 
-            value=True,
-            help="Khi bật, ứng dụng sẽ nhớ vị trí bạn đã dừng nghe và tiếp tục phát từ đó khi mở lại sau"
-        )
-    
     # Main area
     col1, col2 = st.columns([1, 2])
     
@@ -633,18 +620,7 @@ def main():
                 with open(audio_path, "rb") as f:
                     audio_bytes = f.read()
                 
-                # Lấy resume position nếu có
-                start_time = 0
-                if resume_enabled:
-                    resume_state = get_resume_state(
-                        st.session_state.input_path,
-                        output_dir,
-                        audio_format
-                    )
-                    if resume_state and resume_state.get("current_iid") == 1:
-                        start_time = resume_state.get("position_ms", 0) // 1000
-                
-                st.audio(audio_bytes, start_time=start_time)
+                st.audio(audio_bytes)
                 
                 # Thông tin file và nút download
                 file_size = audio_path.stat().st_size
@@ -662,16 +638,6 @@ def main():
                         use_container_width=True,
                         key="download_main",
                         help="Tải file audio về máy tính của bạn"
-                    )
-                
-                # Lưu resume state
-                if resume_enabled:
-                    save_resume_state(
-                        st.session_state.input_path,
-                        output_dir,
-                        audio_format,
-                        1,
-                        start_time * 1000
                     )
             else:
                 st.info("💡 Chưa có file audio. Hãy bấm nút '🎵 Tạo audio' ở bên trái để tạo file audio.")
