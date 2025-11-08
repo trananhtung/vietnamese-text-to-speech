@@ -112,7 +112,7 @@ def chunk_for_tts(sentences: List[str], max_chars: int = 2200) -> List[str]:
 @dataclass
 class TTSConfig:
     backend: str = "edge-tts"  # "edge-tts" | "gtts"
-    voice: str = "vi-VN-HoaiMyNeural"
+    voice: str = "vi-VN-NamMinhNeural"
     rate: str = "-10%"
     pitch: str = "-20Hz"
     max_retries: int = 3           # số lần thử lại khi lỗi mạng/no audio
@@ -255,7 +255,7 @@ def init_session_state():
         "input_path": "",
         "output_dir": str(Path.cwd() / "output_audio"),
         "processing": False,
-        "stop_processing": False,
+        "pending_audio_process": False,  # Flag để đánh dấu cần xử lý audio sau rerun
     }
     for key, value in defaults.items():
         if key not in st.session_state:
@@ -364,7 +364,7 @@ def main():
         voice = st.selectbox(
             "Giọng đọc:",
             ["vi-VN-HoaiMyNeural", "vi-VN-NamMinhNeural", "vi-VN-HuongHanhNeural"],
-            index=0,
+            index=1,
             key="tts_voice",
             help="Chọn giọng đọc tiếng Việt (chỉ áp dụng cho edge-tts)"
         )
@@ -434,40 +434,83 @@ def main():
     with col1:
         st.subheader("📋 Thông tin")
         
-        # Nút áp dụng text
-        is_processing = st.session_state.get("processing", False)
-        if st.button("✅ Áp dụng text đã nhập", type="primary", use_container_width=True, disabled=is_processing):
-            if not is_processing:
-                scan_items("direct_text")
-        
-        # Hiển thị thông tin nếu đã có items
+        # Kiểm tra xem có items chưa
         items = st.session_state.get("items", [])
-        if items and isinstance(items, list) and len(items) > 0:
-            # Vì chỉ có 1 item, không cần selectbox
+        has_items = items and isinstance(items, list) and len(items) > 0
+        
+        # Set current_iid nếu có items
+        if has_items:
             st.session_state.current_iid = 1
-            
-            title, text = items[0]
-            char_count = len(text)
-            edited_key = f"edited_text_1"
-            is_edited = edited_key in st.session_state and st.session_state[edited_key] != text
-            
-            # Hiển thị thông tin
-            if is_edited:
-                st.info(f"📄 **{title}**\n\n📊 {char_count:,} ký tự ✏️ đã chỉnh sửa")
-            else:
-                st.info(f"📄 **{title}**\n\n📊 {char_count:,} ký tự")
-            
-            # Nút tạo audio - chỉ 1 nút
-            is_processing = st.session_state.get("processing", False)
-            if st.button("🎵 Tạo audio", type="primary", use_container_width=True,
-                        help="Tạo file audio từ text đã nhập", disabled=is_processing):
-                if not is_processing:
-                    process_audio([1], skip_existing, backend, voice, rate, pitch, 
-                                retries, retry_delay, throttle, max_workers, audio_format, bitrate, output_dir)
-            
-            # Nút mở thư mục xuất
-            if st.button("📂 Mở thư mục chứa file audio", use_container_width=True,
-                        help="Mở thư mục chứa các file audio đã tạo trên máy tính của bạn"):
+        
+        # Nút tạo audio - luôn hiển thị (lấy is_processing trực tiếp từ session_state)
+        is_processing = st.session_state.get("processing", False)
+        if st.button("🎵 Tạo audio", type="primary", use_container_width=True,
+                    help="Tạo file audio từ text đã nhập", disabled=is_processing):
+            if not is_processing:
+                # Nếu chưa có items, tự động scan trước
+                if not has_items:
+                    direct_text = st.session_state.get("direct_text_input", "").strip()
+                    if not direct_text:
+                        st.error("Vui lòng nhập nội dung text trước.")
+                        st.rerun()
+                    # Tự động scan items
+                    scan_items("direct_text", auto_rerun=False)
+                    # Reload items sau khi scan
+                    items = st.session_state.get("items", [])
+                    if not items:
+                        st.error("Không thể tạo items từ text.")
+                        st.rerun()
+                
+                # Set processing = True và lưu tham số để gọi process_audio trong lần rerun tiếp theo
+                st.session_state.processing = True
+                st.session_state.pending_audio_process = True
+                st.session_state.audio_params = {
+                    "ids": [1],
+                    "skip_existing": skip_existing,
+                    "backend": backend,
+                    "voice": voice,
+                    "rate": rate,
+                    "pitch": pitch,
+                    "retries": retries,
+                    "retry_delay": retry_delay,
+                    "throttle": throttle,
+                    "max_workers": max_workers,
+                    "audio_format": audio_format,
+                    "bitrate": bitrate,
+                    "output_dir": output_dir,
+                }
+                # Rerun ngay để UI cập nhật (button sẽ disable)
+                st.rerun()
+        
+        # Xử lý audio nếu có flag pending (sau khi rerun)
+        if st.session_state.get("pending_audio_process", False) and st.session_state.get("processing", False):
+            params = st.session_state.get("audio_params", {})
+            if params:
+                # Reset flag trước khi xử lý
+                st.session_state.pending_audio_process = False
+                # Gọi process_audio
+                process_audio(
+                    params["ids"],
+                    params["skip_existing"],
+                    params["backend"],
+                    params["voice"],
+                    params["rate"],
+                    params["pitch"],
+                    params["retries"],
+                    params["retry_delay"],
+                    params["throttle"],
+                    params["max_workers"],
+                    params["audio_format"],
+                    params["bitrate"],
+                    params["output_dir"],
+                )
+        
+        # Nút mở thư mục xuất - disable khi processing (lấy is_processing trực tiếp)
+        is_processing = st.session_state.get("processing", False)
+        if st.button("📂 Mở thư mục chứa file audio", use_container_width=True,
+                    help="Mở thư mục chứa các file audio đã tạo trên máy tính của bạn", 
+                    disabled=is_processing):
+            if not is_processing:
                 try:
                     out = Path(output_dir).expanduser().resolve()
                     out.mkdir(parents=True, exist_ok=True)
@@ -482,14 +525,16 @@ def main():
                     st.success(f"✅ Đã mở thư mục: {out}")
                 except Exception as e:
                     st.error(f"❌ Không mở được thư mục: {e}")
-        else:
-            st.info("💡 Chưa có dữ liệu. Hãy nhập text vào trình soạn thảo bên dưới và bấm nút 'Áp dụng text đã nhập' ở trên.")
     
     with col2:
         st.subheader("📖 Nội dung")
         
-        # Hiển thị trình soạn thảo nếu chưa có items
-        if not st.session_state.get("items") or len(st.session_state.get("items", [])) == 0:
+        items = st.session_state.get("items", [])
+        has_items = items and isinstance(items, list) and len(items) > 0
+        
+        # Hiển thị trình soạn thảo tùy theo trạng thái
+        if not has_items:
+            # Hiển thị trình soạn thảo khi chưa có items
             st.markdown("### ✍️ Trình soạn thảo văn bản")
             
             # Lấy text từ session_state hoặc default
@@ -500,9 +545,9 @@ def main():
             edited_text = st.text_area(
                 "Nhập hoặc dán nội dung văn bản của bạn:",
                 value=default_text,
-                height=400,
+                height=300,
                 key="direct_text_editor",
-                help="Nhập hoặc dán nội dung văn bản bạn muốn chuyển thành audio. Sau đó bấm 'Áp dụng text đã nhập' ở bên trái để bắt đầu.",
+                help="Nhập hoặc dán nội dung văn bản bạn muốn chuyển thành audio. Sau đó bấm '🎵 Tạo audio' ở bên trái.",
                 disabled=is_processing
             )
             
@@ -516,16 +561,13 @@ def main():
             
             # Hướng dẫn
             if not edited_text.strip():
-                st.info("💡 **Hướng dẫn:** Nhập hoặc dán nội dung văn bản vào ô trên, sau đó bấm nút '✅ Áp dụng text đã nhập' ở bên trái để bắt đầu tạo audio.")
+                st.info("💡 **Hướng dẫn:** Nhập hoặc dán nội dung văn bản vào ô trên, sau đó bấm nút '🎵 Tạo audio' ở bên trái để bắt đầu tạo audio.")
             else:
                 estimated_time = char_count / 10  # Ước tính thời gian (giả sử ~10 ký tự/giây)
-                st.success(f"✅ Đã nhập {char_count:,} ký tự ({word_count:,} từ). Ước tính thời gian audio: ~{estimated_time/60:.1f} phút. Bấm 'Áp dụng text đã nhập' để tiếp tục.")
-            
-            # Không hiển thị phần còn lại
-            st.stop()
+                st.success(f"✅ Đã nhập {char_count:,} ký tự ({word_count:,} từ). Ước tính thời gian audio: ~{estimated_time/60:.1f} phút. Bấm '🎵 Tạo audio' để tiếp tục.")
         
-        items = st.session_state.get("items", [])
-        if items and isinstance(items, list) and len(items) > 0:
+        # Hiển thị nội dung đã chỉnh sửa nếu có items
+        if has_items:
             # Vì chỉ có 1 item, đơn giản hóa logic
             title, original_text = items[0]
             
@@ -641,8 +683,13 @@ def main():
         st.progress(st.session_state.processing_progress / 100.0)
 
 
-def scan_items(input_mode_flag):
-    """Quét nội dung từ text trực tiếp."""
+def scan_items(input_mode_flag, auto_rerun=True):
+    """Quét nội dung từ text trực tiếp.
+    
+    Args:
+        input_mode_flag: Loại input (không dùng trong trường hợp này)
+        auto_rerun: Nếu True, tự động rerun sau khi scan. Nếu False, không rerun (dùng khi gọi từ process_audio).
+    """
     try:
         direct_text = st.session_state.get("direct_text_input", "").strip()
         if not direct_text:
@@ -670,10 +717,10 @@ def scan_items(input_mode_flag):
         if "last_generated_audio_path" in st.session_state:
             del st.session_state.last_generated_audio_path
         
-        # Thông báo thành công
-        st.success(f"✅ Đã tạo 1 item từ text đã nhập: '{title}' ({len(items[0][1])} ký tự).")
-        
-        st.rerun()
+        # Thông báo thành công (chỉ hiển thị nếu auto_rerun)
+        if auto_rerun:
+            st.success(f"✅ Đã tạo 1 item từ text đã nhập: '{title}' ({len(items[0][1])} ký tự).")
+            st.rerun()
     except Exception as e:
         st.error(f"Lỗi khi quét nội dung: {e}")
 
@@ -751,10 +798,7 @@ def process_audio(ids: List[int], skip_existing: bool, backend: str, voice: str,
             audio.export(final, format="ipod", bitrate=bitrate)
             return final
     
-    def process_one(iid: int, items_ref: List[Tuple[str, str]], stop_event_ref: dict) -> Tuple[int, str]:
-        if stop_event_ref.get("stop", False):
-            return iid, "stopped"
-        
+    def process_one(iid: int, items_ref: List[Tuple[str, str]]) -> Tuple[int, str]:
         if iid < 1 or iid > len(items_ref):
             return iid, "Lỗi: ID không hợp lệ"
         title, text = items_ref[iid - 1]
@@ -795,7 +839,6 @@ def process_audio(ids: List[int], skip_existing: bool, backend: str, voice: str,
     
     # Xử lý với progress bar
     st.session_state.processing = True
-    stop_event = {"stop": False}  # Dùng dict để có thể thay đổi từ thread
     
     total = len(ids)
     completed = 0
@@ -807,17 +850,12 @@ def process_audio(ids: List[int], skip_existing: bool, backend: str, voice: str,
     progress_placeholder = st.empty()
     status_placeholder = st.empty()
     
-    # Nút dừng
-    stop_placeholder = st.empty()
-    if stop_placeholder.button("⏹️ Dừng xử lý", key="stop_processing_btn"):
-        stop_event["stop"] = True
-    
     try:
         # Xử lý các file còn lại với ThreadPoolExecutor
         with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
-            # Truyền items và stop_event vào hàm process_one
+            # Truyền items vào hàm process_one
             future_map = {
-                executor.submit(process_one, iid, items, stop_event): iid 
+                executor.submit(process_one, iid, items): iid 
                 for iid in remaining
             }
             
@@ -825,8 +863,6 @@ def process_audio(ids: List[int], skip_existing: bool, backend: str, voice: str,
             generated_files = {}
             
             for future in concurrent.futures.as_completed(future_map):
-                if stop_event["stop"]:
-                    break
                 iid, msg = future.result()
                 completed += 1
                 progress = completed / total
@@ -845,16 +881,12 @@ def process_audio(ids: List[int], skip_existing: bool, backend: str, voice: str,
     
     finally:
         st.session_state.processing = False
-        stop_placeholder.empty()
         
         # Lưu đường dẫn file audio đã tạo vào session_state
         if generated_files.get(1):
             st.session_state.last_generated_audio_path = generated_files[1]
         
-        if stop_event["stop"]:
-            st.warning("Đã dừng theo yêu cầu.")
-        else:
-            st.success(f"Hoàn tất {completed}/{total} chương. Bạn có thể chọn chương và phát audio.")
+        st.success(f"Hoàn tất {completed}/{total} chương. Bạn có thể chọn chương và phát audio.")
         
         progress_placeholder.empty()
         status_placeholder.empty()
@@ -863,6 +895,9 @@ def process_audio(ids: List[int], skip_existing: bool, backend: str, voice: str,
             del st.session_state.processing_status
         if "processing_progress" in st.session_state:
             del st.session_state.processing_progress
+        
+        # Rerun để cập nhật UI (button sẽ enable lại)
+        st.rerun()
 
 
 if __name__ == "__main__":
