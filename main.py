@@ -339,10 +339,37 @@ def main():
     with st.sidebar:
         st.header("⚙️ Cấu hình")
         
-        # Nguồn - chỉ hỗ trợ nhập text trực tiếp
+        # Nguồn - chọn giữa nhập text trực tiếp hoặc chọn folder
         st.subheader("📁 Nguồn")
-        st.info("💡 Nhập nội dung text trực tiếp vào trình soạn thảo bên dưới")
-        st.session_state.input_path = "direct_text_input"
+        input_mode = st.radio(
+            "Chọn nguồn:",
+            ["Nhập text trực tiếp", "Chọn folder chứa file .txt"],
+            index=0,
+            key="input_mode",
+            help="Chọn cách nhập dữ liệu: nhập text trực tiếp hoặc quét tất cả file .txt trong một folder"
+        )
+        
+        if input_mode == "Nhập text trực tiếp":
+            st.session_state.input_path = "direct_text_input"
+            st.info("💡 Nhập nội dung text trực tiếp vào trình soạn thảo bên dưới")
+        else:
+            st.session_state.input_path = "folder_input"
+            folder_path = st.text_input(
+                "Đường dẫn folder chứa file .txt:",
+                value=st.session_state.get("folder_path", ""),
+                key="folder_path_input",
+                help="Nhập đường dẫn folder chứa các file .txt. Ví dụ: ~/Documents/texts hoặc ./text_files"
+            )
+            st.session_state.folder_path = folder_path
+            
+            if folder_path:
+                folder_path_expanded = Path(folder_path).expanduser().resolve()
+                if folder_path_expanded.exists() and folder_path_expanded.is_dir():
+                    # Đếm số file .txt
+                    txt_files = list(folder_path_expanded.glob("*.txt"))
+                    st.info(f"📂 Tìm thấy {len(txt_files)} file .txt trong folder")
+                else:
+                    st.warning(f"⚠️ Folder không tồn tại: {folder_path_expanded}")
         
         # Input tên cho text/audio đã được loại bỏ. Ứng dụng sẽ dùng tên mặc định.
         
@@ -421,6 +448,9 @@ def main():
     with col1:
         st.subheader("📋 Thông tin")
         
+        # Kiểm tra input mode
+        input_mode = st.session_state.get("input_mode", "Nhập text trực tiếp")
+        
         # Kiểm tra xem có items chưa
         items = st.session_state.get("items", [])
         has_items = items and isinstance(items, list) and len(items) > 0
@@ -429,45 +459,94 @@ def main():
         if has_items:
             st.session_state.current_iid = 1
         
-        # Nút tạo audio - luôn hiển thị (lấy is_processing trực tiếp từ session_state)
+        # Xử lý theo input mode
         is_processing = st.session_state.get("processing", False)
-        if st.button("🎵 Tạo audio", type="primary", use_container_width=True,
-                    help="Tạo file audio từ text đã nhập", disabled=is_processing):
-            if not is_processing:
-                # Nếu chưa có items, tự động scan trước
-                if not has_items:
-                    direct_text = st.session_state.get("direct_text_input", "").strip()
-                    if not direct_text:
-                        st.error("Vui lòng nhập nội dung text trước.")
-                        st.rerun()
-                    # Tự động scan items
-                    scan_items("direct_text", auto_rerun=False)
-                    # Reload items sau khi scan
-                    items = st.session_state.get("items", [])
-                    if not items:
-                        st.error("Không thể tạo items từ text.")
-                        st.rerun()
+        
+        if input_mode == "Chọn folder chứa file .txt":
+            # Folder mode
+            if not has_items:
+                # Nút quét folder
+                if st.button("🔍 Quét folder", type="primary", use_container_width=True,
+                            help="Quét tất cả file .txt trong folder đã chọn", disabled=is_processing):
+                    if not is_processing:
+                        scan_folder()
+            else:
+                # Hiển thị thông tin số file đã quét
+                st.info(f"📂 Đã quét {len(items)} file .txt")
                 
-                # Set processing = True và lưu tham số để gọi process_audio trong lần rerun tiếp theo
-                st.session_state.processing = True
-                st.session_state.pending_audio_process = True
-                st.session_state.audio_params = {
-                    "ids": [1],
-                    "skip_existing": skip_existing,
-                    "backend": backend,
-                    "voice": voice,
-                    "rate": rate,
-                    "pitch": pitch,
-                    "retries": retries,
-                    "retry_delay": retry_delay,
-                    "throttle": throttle,
-                    "max_workers": max_workers,
-                    "audio_format": audio_format,
-                    "bitrate": bitrate,
-                    "output_dir": output_dir,
-                }
-                # Rerun ngay để UI cập nhật (button sẽ disable)
-                st.rerun()
+                # Hiển thị danh sách file (tối đa 10 file đầu tiên)
+                with st.expander(f"📋 Danh sách file ({len(items)} file)", expanded=False):
+                    for idx, (title, text) in enumerate(items[:10], 1):
+                        char_count = len(text)
+                        st.text(f"{idx}. {title} ({char_count:,} ký tự)")
+                    if len(items) > 10:
+                        st.text(f"... và {len(items) - 10} file khác")
+                
+                # Nút Start để convert tất cả
+                if st.button("🚀 Start", type="primary", use_container_width=True,
+                            help="Convert tất cả file .txt thành audio", disabled=is_processing):
+                    if not is_processing:
+                        # Set processing = True và lưu tham số để gọi process_audio cho tất cả items
+                        st.session_state.processing = True
+                        st.session_state.pending_audio_process = True
+                        # Tạo danh sách IDs cho tất cả items
+                        all_ids = list(range(1, len(items) + 1))
+                        st.session_state.audio_params = {
+                            "ids": all_ids,
+                            "skip_existing": skip_existing,
+                            "backend": backend,
+                            "voice": voice,
+                            "rate": rate,
+                            "pitch": pitch,
+                            "retries": retries,
+                            "retry_delay": retry_delay,
+                            "throttle": throttle,
+                            "max_workers": max_workers,
+                            "audio_format": audio_format,
+                            "bitrate": bitrate,
+                            "output_dir": output_dir,
+                        }
+                        # Rerun ngay để UI cập nhật (button sẽ disable)
+                        st.rerun()
+        else:
+            # Direct text mode - giữ nguyên logic cũ
+            if st.button("🎵 Tạo audio", type="primary", use_container_width=True,
+                        help="Tạo file audio từ text đã nhập", disabled=is_processing):
+                if not is_processing:
+                    # Nếu chưa có items, tự động scan trước
+                    if not has_items:
+                        direct_text = st.session_state.get("direct_text_input", "").strip()
+                        if not direct_text:
+                            st.error("Vui lòng nhập nội dung text trước.")
+                            st.rerun()
+                        # Tự động scan items
+                        scan_items("direct_text", auto_rerun=False)
+                        # Reload items sau khi scan
+                        items = st.session_state.get("items", [])
+                        if not items:
+                            st.error("Không thể tạo items từ text.")
+                            st.rerun()
+                    
+                    # Set processing = True và lưu tham số để gọi process_audio trong lần rerun tiếp theo
+                    st.session_state.processing = True
+                    st.session_state.pending_audio_process = True
+                    st.session_state.audio_params = {
+                        "ids": [1],
+                        "skip_existing": skip_existing,
+                        "backend": backend,
+                        "voice": voice,
+                        "rate": rate,
+                        "pitch": pitch,
+                        "retries": retries,
+                        "retry_delay": retry_delay,
+                        "throttle": throttle,
+                        "max_workers": max_workers,
+                        "audio_format": audio_format,
+                        "bitrate": bitrate,
+                        "output_dir": output_dir,
+                    }
+                    # Rerun ngay để UI cập nhật (button sẽ disable)
+                    st.rerun()
         
         # Xử lý audio nếu có flag pending (sau khi rerun)
         if st.session_state.get("pending_audio_process", False) and st.session_state.get("processing", False):
@@ -691,8 +770,85 @@ def scan_items(input_mode_flag, auto_rerun=True):
         st.error(f"Lỗi khi quét nội dung: {e}")
 
 
-def generate_audio_filename(text: str, audio_format: str) -> str:
-    """Tạo tên file audio từ đoạn text đầu tiên + random text."""
+def scan_folder():
+    """Quét tất cả file .txt trong folder và tạo items."""
+    try:
+        folder_path = st.session_state.get("folder_path", "").strip()
+        if not folder_path:
+            st.error("Vui lòng nhập đường dẫn folder trước.")
+            return
+        
+        folder_path_expanded = Path(folder_path).expanduser().resolve()
+        if not folder_path_expanded.exists():
+            st.error(f"Folder không tồn tại: {folder_path_expanded}")
+            return
+        
+        if not folder_path_expanded.is_dir():
+            st.error(f"Đường dẫn không phải là folder: {folder_path_expanded}")
+            return
+        
+        # Quét tất cả file .txt
+        txt_files = sorted(folder_path_expanded.glob("*.txt"))
+        if not txt_files:
+            st.warning(f"Không tìm thấy file .txt nào trong folder: {folder_path_expanded}")
+            return
+        
+        # Đọc nội dung từng file và tạo items
+        items = []
+        for txt_file in txt_files:
+            try:
+                content = txt_file.read_text(encoding="utf-8")
+                # Dùng tên file (không có extension) làm title
+                title = txt_file.stem
+                # Normalize text
+                normalized_content = normalize_text_preserve_newlines(content)
+                if normalized_content.strip():  # Chỉ thêm nếu có nội dung
+                    items.append((title, normalized_content))
+            except Exception as e:
+                st.warning(f"Không đọc được file {txt_file.name}: {e}")
+                continue
+        
+        if not items:
+            st.error("Không có file .txt nào có nội dung hợp lệ.")
+            return
+        
+        # Lưu items vào session_state
+        st.session_state.items = items
+        st.session_state.current_iid = 1 if items else None
+        
+        # Xóa các chỉnh sửa cũ khi quét lại
+        keys_to_delete = [key for key in st.session_state.keys() if key.startswith("edited_text_")]
+        for key in keys_to_delete:
+            del st.session_state[key]
+        
+        # Xóa đường dẫn file audio cũ khi quét lại
+        if "last_generated_audio_path" in st.session_state:
+            del st.session_state.last_generated_audio_path
+        
+        # Thông báo thành công
+        st.success(f"✅ Đã quét {len(items)} file .txt từ folder. Bấm '🚀 Start' để convert tất cả.")
+        st.rerun()
+    except Exception as e:
+        st.error(f"Lỗi khi quét folder: {e}")
+
+
+def generate_audio_filename(text: str, audio_format: str, title: Optional[str] = None) -> str:
+    """Tạo tên file audio từ title hoặc từ đoạn text đầu tiên + random text.
+    
+    Args:
+        text: Nội dung text
+        audio_format: Định dạng audio (mp3, ogg, m4a)
+        title: Tên file (nếu có, sẽ dùng làm tên file audio). Nếu None, sẽ tạo từ text.
+    """
+    if title:
+        # Dùng title làm tên file (sanitize để đảm bảo hợp lệ)
+        safe_title = sanitize_filename(title)
+        # Giới hạn độ dài để tránh tên file quá dài
+        if len(safe_title) > 100:
+            safe_title = safe_title[:100]
+        return f"{safe_title}.{audio_format}"
+    
+    # Nếu không có title, dùng logic cũ (cho direct text mode)
     # Lấy khoảng 80 ký tự đầu tiên, loại bỏ khoảng trắng thừa
     first_text = text.strip()[:80]
     first_text = " ".join(first_text.split())  # Chuẩn hóa khoảng trắng
@@ -716,8 +872,8 @@ def get_expected_audio_path(iid: int, audio_format: str, output_dir: str) -> Pat
     items = st.session_state.get("items", [])
     if not items or not isinstance(items, list) or iid < 1 or iid > len(items):
         return Path("/dev/null")
-    _, text = items[iid - 1]
-    filename = generate_audio_filename(text, audio_format)
+    title, text = items[iid - 1]
+    filename = generate_audio_filename(text, audio_format, title=title)
     out = Path(output_dir).expanduser().resolve()
     return out / filename
 
@@ -769,15 +925,23 @@ def process_audio(ids: List[int], skip_existing: bool, backend: str, voice: str,
             return iid, "Lỗi: ID không hợp lệ"
         title, text = items_ref[iid - 1]
         
-        # Tạo tên file mới mỗi lần dựa trên text đầu tiên + random
-        filename = generate_audio_filename(text, audio_format)
+        # Tạo tên file: dùng title nếu có (cho folder mode), nếu không dùng logic cũ (cho direct text mode)
+        filename = generate_audio_filename(text, audio_format, title=title)
         target_path = out / filename
         
-        # Đảm bảo không trùng tên (nếu trùng thì thêm random lại)
-        while target_path.exists():
-            # Tạo lại với random mới
-            filename = generate_audio_filename(text, audio_format)
-            target_path = out / filename
+        # Đảm bảo không trùng tên (nếu trùng thì thêm random suffix)
+        if target_path.exists():
+            # Nếu có title, thêm random suffix vào cuối (trước extension)
+            if title:
+                base_name = target_path.stem
+                random_suffix = ''.join(random.choices('0123456789abcdef', k=8))
+                filename = f"{base_name}_{random_suffix}.{audio_format}"
+                target_path = out / filename
+            else:
+                # Nếu không có title, tạo lại với random mới
+                while target_path.exists():
+                    filename = generate_audio_filename(text, audio_format, title=None)
+                    target_path = out / filename
         
         try:
             backend_inst = build_backend(cfg)
