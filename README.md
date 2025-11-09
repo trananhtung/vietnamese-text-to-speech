@@ -1,69 +1,94 @@
 # 🎧 Tạo Audio Tiếng Việt từ Văn bản
 
-Ứng dụng Streamlit để chuyển đổi text trực tiếp thành file audio tiếng Việt (MP3/OGG/M4A). Kèm trình đọc trong app, tự động phát và ghi nhớ vị trí đang nghe (resume).
+App convert text sang audio tiếng Việt. Hỗ trợ nhập text trực tiếp hoặc xử lý hàng loạt file .txt từ folder.
 
 ![Giao diện ứng dụng](demo.png)
 
+## 🎵 Demo Audio
+
+Nghe thử chất lượng audio được tạo từ app:
+
+<audio controls>
+  <source src="demo-audio.mp3" type="audio/mpeg">
+  Trình duyệt của bạn không hỗ trợ audio player. <a href="demo-audio.mp3">Tải về</a> để nghe.
+</audio>
+
 ## Tính năng
 
-- **Nhập text trực tiếp**: Nhập hoặc dán văn bản trực tiếp để tạo một file audio
-- **Trình đọc tích hợp**: Phát audio ngay trong ứng dụng với khả năng tự động phát và ghi nhớ vị trí
-- **Chất lượng cao**: VBR cho MP3 (≈ ~245–270 kbps trung bình) với ffmpeg
-- **Độ tin cậy**: Retry/backoff, throttle, fallback gTTS
+- Nhập text trực tiếp hoặc quét folder chứa file .txt
+- Chỉnh sửa text trước khi tạo audio
+- Phát audio ngay trong app
+- Xử lý đa luồng (nhiều file cùng lúc)
+- Hỗ trợ MP3/OGG/M4A
+- MP3 dùng VBR chất lượng cao (~245-270 kbps)
+- Retry/backoff, throttle, fallback gTTS khi lỗi
 
-## Cài đặt và Chạy ứng dụng
+## Cài đặt
 
-### Cách 1: Chạy trên máy local
+### Local
 
-#### Yêu cầu hệ thống
+**Yêu cầu:**
+- Python 3.8+
+- ffmpeg
 
-**Python 3.8+**
-
-**Thư viện Python:**
+**Cài đặt Python packages:**
 ```bash
 pip install -r requirements.txt
 ```
 
-Hoặc cài đặt thủ công:
+Hoặc cài thủ công:
 ```bash
 pip install streamlit pydub gTTS edge-tts
 ```
 
-**ffmpeg**:
-- **Windows**: Tải [ffmpeg](https://ffmpeg.org/download.html), giải nén và thêm vào PATH
-- **macOS**: `brew install ffmpeg`
-- **Linux**: `sudo apt-get install ffmpeg` (hoặc theo distro của bạn)
+**Cài đặt ffmpeg:**
 
-#### Chạy ứng dụng
+- **Windows**: 
+  - Tải từ [ffmpeg.org](https://ffmpeg.org/download.html)
+  - Giải nén và thêm vào PATH
+  - Hoặc dùng chocolatey: `choco install ffmpeg`
 
+- **macOS**: 
+  ```bash
+  brew install ffmpeg
+  ```
+
+- **Linux**: 
+  ```bash
+  # Ubuntu/Debian
+  sudo apt-get install ffmpeg
+  
+  # Fedora
+  sudo dnf install ffmpeg
+  
+  # Arch
+  sudo pacman -S ffmpeg
+  ```
+
+**Chạy app:**
 ```bash
 streamlit run main.py
 ```
 
-Ứng dụng sẽ chạy tại: http://localhost:8501
+Mở http://localhost:8501
 
----
+### Docker
 
-### Cách 2: Chạy bằng Docker
-
-#### Yêu cầu
-- Docker đã được cài đặt trên hệ thống
-- Docker Compose (tùy chọn, để dễ quản lý)
-
-#### Xây dựng và chạy Docker container
+**Yêu cầu:**
+- Docker đã cài đặt
+- Docker Compose (tùy chọn)
 
 **Cài đặt Docker:**
-- Tham khảo hướng dẫn chính thức tại: https://docs.docker.com/engine/install/
-- Chọn hệ điều hành phù hợp (Windows, macOS, Linux) và làm theo hướng dẫn
+- Xem hướng dẫn: https://docs.docker.com/engine/install/
 
+**Build và chạy:**
 
-**Xây dựng image:**
+Cách 1 - Docker command:
 ```bash
+# Build image
 docker build -t tao-audio-viet .
-```
 
-**Chạy container:**
-```bash
+# Chạy container
 docker run -d \
   --name tao-audio-viet \
   -p 8501:8501 \
@@ -72,48 +97,75 @@ docker run -d \
   tao-audio-viet
 ```
 
-**Hoặc sử dụng Docker Compose** (file `docker-compose.yml` đã có sẵn):
-
-Chạy:
+Cách 2 - Docker Compose (khuyến nghị):
 ```bash
 docker-compose up -d
 ```
 
-**Truy cập ứng dụng:**
-- Mở trình duyệt và vào: http://localhost:8501
+**Truy cập:**
+- Mở http://localhost:8501
 
 **Dừng container:**
 ```bash
+# Docker command
 docker stop tao-audio-viet
 docker rm tao-audio-viet
-```
 
-**Hoặc với Docker Compose:**
-```bash
+# Docker Compose
 docker-compose down
 ```
 
 **Lưu ý:**
-- Volume mount (`-v`) để lưu file audio và upload tạm thời ra ngoài container
-- File audio sẽ được lưu trong thư mục `output_audio` trên máy host
+- Volume mount (`-v`) để lưu file audio ra ngoài container
+- File audio lưu trong thư mục `output_audio` trên máy host
 
-## Cấu hình TTS
+## Cấu hình
 
-**TTS mặc định**: edge-tts (Microsoft Neural) — cần internet
+Tất cả cấu hình trong sidebar:
 
-**Giọng đọc gợi ý**:
-- `vi-VN-HoaiMyNeural` (giọng nữ)
-- `vi-VN-NamMinhNeural` (giọng nam)
-- `vi-VN-HuongHanhNeural` (giọng nữ)
+**TTS:**
+- `edge-tts` (mặc định) - chất lượng cao, cần internet
+- `gtts` - đơn giản, miễn phí
+
+**Giọng đọc (edge-tts):**
+- `vi-VN-HoaiMyNeural` (nữ)
+- `vi-VN-NamMinhNeural` (nam) - mặc định
+- `vi-VN-HuongHanhNeural` (nữ)
+
+**Điều chỉnh:**
+- Tốc độ: `+20%` (nhanh), `-10%` (chậm), `+0%` (mặc định)
+- Cao độ: `+50Hz` (cao), `-20Hz` (thấp), `+0Hz` (mặc định)
+
+**Xử lý:**
+- Số lần retry: 3 (mặc định)
+- Retry delay: 1.5s (mặc định)
+- Throttle: 2s (mặc định)
+- Max workers: 3 (mặc định)
+
+**Format:**
+- MP3: VBR tự động (chất lượng cao)
+- OGG/M4A: tùy chỉnh bitrate
 
 ## Sử dụng
 
-1. **Nhập nội dung**: Nhập hoặc dán văn bản vào trình soạn thảo bên dưới
+### Mode 1: Nhập text trực tiếp
 
-2. **Áp dụng text**: Bấm nút "Áp dụng text đã nhập" để bắt đầu
+1. Sidebar → chọn "Nhập text trực tiếp"
+2. Nhập/dán text vào editor bên phải
+3. Bấm "🎵 Tạo audio" bên trái
+4. Chỉnh sửa text nếu cần (tự động lưu)
+5. Nghe/tải audio sau khi tạo xong
 
-3. **Xem và chỉnh sửa**: Xem nội dung và chỉnh sửa nếu cần trước khi tạo audio
+### Mode 2: Folder chứa file .txt
 
-4. **Tạo audio**: Bấm nút "Tạo audio" để tạo file audio từ text đã nhập
+1. Sidebar → chọn "Chọn folder chứa file .txt"
+2. Nhập đường dẫn folder (vd: `~/Documents/texts`)
+3. Bấm "🔍 Quét folder"
+4. Bấm "🚀 Start" để convert tất cả
+5. Xem progress và kết quả
+6. Bấm "📂 Mở thư mục chứa file audio" để xem files
 
-5. **Nghe và tải**: Phát audio ngay trong app hoặc tải về máy tính
+**Lưu ý:**
+- File audio lưu vào thư mục cấu hình (mặc định: `output_audio`)
+- Tên file tự động từ tên .txt (folder mode) hoặc từ text (direct mode)
+- Có thể chỉnh sửa text trước khi tạo audio
