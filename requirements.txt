@@ -1,5 +1,5 @@
-streamlit>=1.28.0
+streamlit>=1.53.0
 pydub>=0.25.1
-gTTS>=2.4.0
-edge-tts>=6.1.0
+gTTS>=2.5.4
+edge-tts>=7.2.7
 
